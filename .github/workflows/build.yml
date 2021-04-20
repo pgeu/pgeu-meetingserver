@@ -1,0 +1,30 @@
+name: Go Build & Format
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+    tags:
+
+jobs:
+  build:
+    name: Build program
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v2
+
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: '1.16'
+
+    - name: Get dependencies
+      run: go mod download
+
+    - name: Build
+      run: go build
+
+    - name: Verify gofmt
+      run: X=$(gofmt -s -d .) ; [[ "$X" == "" ]] || (echo "$X" ; exit 1)
+      shell: bash
