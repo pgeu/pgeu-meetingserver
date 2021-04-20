@@ -215,7 +215,7 @@ func main() {
 	go MeetingRemover()
 
 	/* Start the profile listener if there is one */
-	if profilelisten != nil && *profilelisten != "" {
+	if (profilelisten != nil && *profilelisten != "") {
 		go doListenAndServe(*profilelisten, http.DefaultServeMux)
 	}
 
