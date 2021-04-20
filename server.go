@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"regexp"
@@ -157,6 +158,30 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 /* Are we currently shutting down? In that case we avoid some error logging. */
 var _shutting_down bool = false
 
+/* Listen on a specific host:port or unix socket, serving it using the specified mux */
+func doListenAndServe(listen string, mux *http.ServeMux) {
+	/* Listener starting with / indicates it's a Unix socket */
+	if string((listen)[0]) == "/" {
+		listener, err := net.Listen("unix", listen)
+		if err != nil {
+			log.Fatalf("Could not listen on unix socket %s: %s", listen, err)
+			return
+		}
+
+		CleanupSocketOnExit(listener)
+
+		err = http.Serve(listener, mux)
+		if err != nil && !_shutting_down {
+			log.Fatalf("Could not serve on unix socket %s: %s", listen, err)
+		}
+	} else {
+		err := http.ListenAndServe(listen, mux)
+		if err != nil {
+			log.Fatalf("Could not listen on %s: %s", listen, err)
+		}
+	}
+}
+
 /* Register signal handlers to clean up unix socket, if unix socket is used */
 func CleanupSocketOnExit(listener net.Listener) {
 	sigc := make(chan os.Signal, 1)
@@ -176,6 +201,7 @@ func main() {
 	flag.StringVar(&config.db_url, "dburl", "postgres:///postgresqleu", "PostgreSQL connection URL")
 	flag.BoolVar(&config.behindproxy, "behindproxy", false, "Behind proxy, decode x-forwarded-for")
 	listen := flag.String("listen", "127.0.0.1:8199", "Host and port to listen to")
+	profilelisten := flag.String("profilelisten", "", "Host to listen for go pprof connections")
 
 	flag.Parse()
 
@@ -188,28 +214,15 @@ func main() {
 	/* Start generic background goroutines */
 	go MeetingRemover()
 
-	/* Setup the http handlers and listener */
-	http.HandleFunc("/ws/meeting/", wsHandler)
-	http.HandleFunc("/__meetingstatus", StatusHandler)
-
-	/* Listener starting with / indicates it's a Unix socket */
-	if string((*listen)[0]) == "/" {
-		listener, err := net.Listen("unix", *listen)
-		if err != nil {
-			log.Fatalf("Could not listen on unix socket %s: %s", *listen, err)
-			return
-		}
-
-		CleanupSocketOnExit(listener)
-
-		err = http.Serve(listener, nil)
-		if err != nil && !_shutting_down {
-			log.Fatalf("Could not serve on unix socket %s: %s", *listen, err)
-		}
-	} else {
-		err := http.ListenAndServe(*listen, nil)
-		if err != nil {
-			log.Fatalf("Could not listen on %s: %s", *listen, err)
-		}
+	/* Start the profile listener if there is one */
+	if profilelisten != nil && *profilelisten != "" {
+		go doListenAndServe(*profilelisten, http.DefaultServeMux)
 	}
+
+	/* Setup the http handlers and listener */
+	mux := http.NewServeMux()
+	mux.HandleFunc("/ws/meeting/", wsHandler)
+	mux.HandleFunc("/__meetingstatus", StatusHandler)
+
+	doListenAndServe(*listen, mux)
 }
