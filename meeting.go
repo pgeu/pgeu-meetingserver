@@ -3,9 +3,10 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	_ "github.com/lib/pq"
 	"log"
 	"time"
+
+	_ "github.com/lib/pq"
 )
 
 // Type of action requested through Useraction channel */
@@ -62,7 +63,7 @@ var MeetingStateMap = map[int]string{
 }
 
 func NewMeeting(meetingid int) *Meeting {
-	db, err := sql.Open("postgres", config.db_url)
+	db, err := sql.Open("postgres", config.dbURL)
 	if err != nil {
 		panic(err)
 	}
@@ -97,7 +98,7 @@ func NewMeeting(meetingid int) *Meeting {
 func (m *Meeting) Run() {
 	defer func() {
 		/* When we're done running, trigger the routine that removes us fromt he global array */
-		_meeting_remover_chan <- m.meetingid
+		_meetingRemoverChan <- m.meetingid
 	}()
 
 	for {
@@ -128,7 +129,7 @@ func (m *Meeting) Run() {
 			m.unregister(user)
 		case poll := <-m.polltimer:
 			m.pollTimerFired(poll)
-		case _ = <-m.stopchannel:
+		case <-m.stopchannel:
 			return
 		}
 	}
@@ -280,7 +281,7 @@ ORDER BY ml.id`,
 		var senderid sql.NullInt64
 		msg := msgMessage{}
 
-		err = rows.Scan(&msg.Id, &t, &senderid, &msg.FromName, &msg.Message)
+		err = rows.Scan(&msg.ID, &t, &senderid, &msg.FromName, &msg.Message)
 		if err != nil {
 			log.Println("Failed to parse row in old messages:", err)
 			return
@@ -295,7 +296,7 @@ ORDER BY ml.id`,
 		}
 		data = append(data, msg)
 	}
-	m.sendJsonTo(to, MakeMessage("messages", data))
+	m.sendJSONTo(to, MakeMessage("messages", data))
 }
 
 /***********************************************************************
@@ -303,7 +304,7 @@ ORDER BY ml.id`,
  ***********************************************************************/
 
 /* Broadcast a json structure to all users, optionally filtered by if they are admins or users */
-func (m *Meeting) broadcastJson(toadmin bool, touser bool, v interface{}, excludeuser *User) {
+func (m *Meeting) broadcastJSON(toadmin bool, touser bool, v interface{}, excludeuser *User) {
 	for _, user := range m.users {
 		if user == excludeuser {
 			continue
@@ -328,13 +329,13 @@ func (m *Meeting) broadcastJson(toadmin bool, touser bool, v interface{}, exclud
 }
 
 /* Send a json structure to one individual user */
-func (m *Meeting) sendJsonTo(to *User, v interface{}) {
+func (m *Meeting) sendJSONTo(to *User, v interface{}) {
 	to.Send <- v
 }
 
 /* Send an error message to one individual user */
 func (m *Meeting) sendErrorTo(user *User, message string) {
-	m.sendJsonTo(user, MakeError(message))
+	m.sendJSONTo(user, MakeError(message))
 }
 
 /*
@@ -376,7 +377,7 @@ func (m *Meeting) storeAndBroadcast(message string, from *User) {
 	}
 
 	data := msgMessage{
-		Id:       id,
+		ID:       id,
 		Time:     time.Format("15:04:05"),
 		Date:     time.Format("2006-01-02"),
 		Message:  message,
@@ -385,7 +386,7 @@ func (m *Meeting) storeAndBroadcast(message string, from *User) {
 		Color:    color,
 	}
 
-	m.broadcastJson(true, true, MakeMessage("message", data), nil)
+	m.broadcastJSON(true, true, MakeMessage("message", data), nil)
 }
 
 func (m *Meeting) broadcastUserJoinLeave(user *User, joinleave bool) {
@@ -395,38 +396,38 @@ func (m *Meeting) broadcastUserJoinLeave(user *User, joinleave bool) {
 	} else {
 		what = "removeuser"
 	}
-	mu := msgUser{Name: user.Info.name, Color: user.Info.color, Id: user.Info.keyid}
+	mu := msgUser{Name: user.Info.name, Color: user.Info.color, ID: user.Info.keyid}
 
 	/* Broadcast to both admins and users, except for the one actually joining/leaving */
-	m.broadcastJson(true, true, MakeMessage(what, mu), user)
+	m.broadcastJSON(true, true, MakeMessage(what, mu), user)
 }
 
 func (m *Meeting) sendUserListTo(to *User) {
 	var users []msgUser
 	for _, u := range m.users {
 		if u.Info.connected {
-			mu := msgUser{Name: u.Info.name, Color: u.Info.color, Id: u.Info.keyid}
+			mu := msgUser{Name: u.Info.name, Color: u.Info.color, ID: u.Info.keyid}
 			users = append(users, mu)
 		}
 	}
 
-	m.sendJsonTo(to, MakeMessage("users", msgUsers{Users: users}))
+	m.sendJSONTo(to, MakeMessage("users", msgUsers{Users: users}))
 }
 
 func (m *Meeting) sendMeetingStateTo(to *User) {
-	m.sendJsonTo(to, MakeMessage("status", MakeMeetingState(m.state)))
+	m.sendJSONTo(to, MakeMessage("status", MakeMeetingState(m.state)))
 }
 func (m *Meeting) broadcastMeetingState() {
-	m.broadcastJson(true, true, MakeMessage("status", MakeMeetingState(m.state)), nil)
+	m.broadcastJSON(true, true, MakeMessage("status", MakeMeetingState(m.state)), nil)
 }
 
 func (m *Meeting) sendPollStatusTo(to *User) {
-	m.sendJsonTo(to, MakeMessage("poll", m.getPollStatusStruct(to.Info.admin)))
+	m.sendJSONTo(to, MakeMessage("poll", m.getPollStatusStruct(to.Info.admin)))
 }
 
 func (m *Meeting) broadcastPollStatus() {
-	m.broadcastJson(true, false, MakeMessage("poll", m.getPollStatusStruct(true)), nil)
-	m.broadcastJson(false, true, MakeMessage("poll", m.getPollStatusStruct(false)), nil)
+	m.broadcastJSON(true, false, MakeMessage("poll", m.getPollStatusStruct(true)), nil)
+	m.broadcastJSON(false, true, MakeMessage("poll", m.getPollStatusStruct(false)), nil)
 }
 
 /***********************************************************************
@@ -603,12 +604,12 @@ func (m *Meeting) kickUser(user *User, targetuserid int, canrejoin bool) {
  ***********************************************************************/
 func (m *Meeting) reportStatus(reportchan chan *MeetingStatus) {
 	status := &MeetingStatus{
-		Id:    m.meetingid,
+		ID:    m.meetingid,
 		State: MeetingStateMap[m.state],
 	}
 	for _, u := range m.users {
 		ms := MemberStatus{
-			Uid:    u.Info.authid,
+			UID:    u.Info.authid,
 			Name:   u.Info.name,
 			Admin:  u.Info.admin,
 			Remote: u.Remote(),

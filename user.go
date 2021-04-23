@@ -1,11 +1,12 @@
 package main
 
 import (
-	"github.com/gorilla/websocket"
-	_ "github.com/lib/pq"
 	"log"
 	"strings"
 	"time"
+
+	"github.com/gorilla/websocket"
+	_ "github.com/lib/pq"
 )
 
 /* User data from db, and data "owned" by the meeting the user is in */
@@ -215,10 +216,10 @@ func (u *User) writer() {
 		select {
 		case message, ok := <-u.Disconnect:
 			log.Printf("Disconnecting user with token %s with message %s", u.token, message)
-			u.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			_ = u.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 
 			if !ok {
-				u.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				_ = u.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
 
@@ -233,11 +234,11 @@ func (u *User) writer() {
 				continue
 			}
 
-			u.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			_ = u.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 
 			if !ok {
 				/* Channel closed from controller */
-				u.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				_ = u.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
 
@@ -248,7 +249,7 @@ func (u *User) writer() {
 				return
 			}
 		case <-ticker.C:
-			u.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			_ = u.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if err := u.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
@@ -264,11 +265,10 @@ func (u *User) reader() {
 	}()
 
 	u.conn.SetReadLimit(10240)
-	u.conn.SetReadDeadline(time.Now().Add(90 * time.Second))
+	_ = u.conn.SetReadDeadline(time.Now().Add(90 * time.Second))
 
 	u.conn.SetPongHandler(func(string) error {
-		u.conn.SetReadDeadline(time.Now().Add(90 * time.Second))
-		return nil
+		return u.conn.SetReadDeadline(time.Now().Add(90 * time.Second))
 	})
 
 	for {

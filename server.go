@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/gorilla/websocket"
 	"log"
 	"net"
 	"net/http"
@@ -14,34 +13,36 @@ import (
 	"strconv"
 	"sync"
 	"syscall"
+
+	"github.com/gorilla/websocket"
 )
 
 var config = struct {
-	verify_origin string
-	db_url        string
-	behindproxy   bool
+	verifyOrigin string
+	dbURL        string
+	behindproxy  bool
 }{}
 
 var (
-	_meetings             = make(map[int]*Meeting)
-	_meetings_mutex       sync.RWMutex
-	_meeting_remover_chan = make(chan int, 10)
+	_meetings           = make(map[int]*Meeting)
+	_meetingsMutex      sync.RWMutex
+	_meetingRemoverChan = make(chan int, 10)
 )
 
 func EnsureAndGetMeeting(meetingid int) *Meeting {
-	_meetings_mutex.RLock()
+	_meetingsMutex.RLock()
 	/* Cannot use defer on the unlock since we have to unlock/relock later */
 
 	meeting, ok := _meetings[meetingid]
 
 	if ok {
-		_meetings_mutex.RUnlock()
+		_meetingsMutex.RUnlock()
 		return meeting
 	}
 
 	meeting = NewMeeting(meetingid)
 	if meeting == nil {
-		_meetings_mutex.RUnlock()
+		_meetingsMutex.RUnlock()
 		return nil
 	}
 
@@ -50,16 +51,16 @@ func EnsureAndGetMeeting(meetingid int) *Meeting {
 	* and once we've done that, we also need to make sure nobody else stuck a
 	* new meeting in wile we were waiting for a lock.
 	 */
-	_meetings_mutex.RUnlock()
-	_meetings_mutex.Lock()
-	defer _meetings_mutex.Unlock()
+	_meetingsMutex.RUnlock()
+	_meetingsMutex.Lock()
+	defer _meetingsMutex.Unlock()
 	_, ok = _meetings[meetingid]
 	if ok {
 		return _meetings[meetingid]
 	}
 
 	/*
-	* Nobody put anythign in while we were running, so put our meeting
+	* Nobody put anything in while we were running, so put our meeting
 	* in the array and start the goroutine for it
 	 */
 	_meetings[meetingid] = meeting
@@ -72,8 +73,8 @@ func RemoveMeeting(id int) {
 	* Delete a meeting from the list. If it doesn't exist, it just means
 	* it's already been deleted, so ignore that.
 	 */
-	_meetings_mutex.Lock()
-	defer _meetings_mutex.Unlock()
+	_meetingsMutex.Lock()
+	defer _meetingsMutex.Unlock()
 
 	if _, ok := _meetings[id]; ok {
 		log.Printf("Removing meeting %d", id)
@@ -82,7 +83,7 @@ func RemoveMeeting(id int) {
 }
 func MeetingRemover() {
 	for {
-		id := <-_meeting_remover_chan
+		id := <-_meetingRemoverChan
 		RemoveMeeting(id)
 	}
 }
@@ -96,18 +97,18 @@ var upgrader = websocket.Upgrader{
 			log.Printf("Allowing connection with empty origin")
 			return true
 		}
-		if config.verify_origin == "*" {
+		if config.verifyOrigin == "*" {
 			log.Printf("Allowing origin %s, all origins are allowed", origin[0])
 			return true
 		}
-		return (config.verify_origin == origin[0])
+		return (config.verifyOrigin == origin[0])
 	},
 }
 
-var wsUrlPattern = regexp.MustCompile("^/ws/meeting/(\\d+)/([A-Za-z0-9_-]{54})/(\\d+)")
+var wsURLPattern = regexp.MustCompile(`^/ws/meeting/(\d+)/([A-Za-z0-9_-]{54})/(\d+)`)
 
 func wsHandler(w http.ResponseWriter, r *http.Request) {
-	match := wsUrlPattern.FindStringSubmatch(r.URL.Path)
+	match := wsURLPattern.FindStringSubmatch(r.URL.Path)
 	if len(match) == 0 {
 		http.NotFound(w, r)
 		return
@@ -156,7 +157,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 /* Are we currently shutting down? In that case we avoid some error logging. */
-var _shutting_down bool = false
+var _shuttingDown bool = false
 
 /* Listen on a specific host:port or unix socket, serving it using the specified mux */
 func doListenAndServe(listen string, mux *http.ServeMux) {
@@ -171,7 +172,7 @@ func doListenAndServe(listen string, mux *http.ServeMux) {
 		CleanupSocketOnExit(listener)
 
 		err = http.Serve(listener, mux)
-		if err != nil && !_shutting_down {
+		if err != nil && !_shuttingDown {
 			log.Fatalf("Could not serve on unix socket %s: %s", listen, err)
 		}
 	} else {
@@ -190,22 +191,22 @@ func CleanupSocketOnExit(listener net.Listener) {
 		sig := <-c
 		log.Printf("Caught signal %s: shutting down.", sig)
 		/* Flag that we're shutting down, so we will not report an error */
-		_shutting_down = true
+		_shuttingDown = true
 		listener.Close()
 		os.Exit(0)
 	}(sigc)
 }
 
 func main() {
-	flag.StringVar(&config.verify_origin, "origin", "", "Origin to verify")
-	flag.StringVar(&config.db_url, "dburl", "postgres:///postgresqleu", "PostgreSQL connection URL")
+	flag.StringVar(&config.verifyOrigin, "origin", "", "Origin to verify")
+	flag.StringVar(&config.dbURL, "dburl", "postgres:///postgresqleu", "PostgreSQL connection URL")
 	flag.BoolVar(&config.behindproxy, "behindproxy", false, "Behind proxy, decode x-forwarded-for")
 	listen := flag.String("listen", "127.0.0.1:8199", "Host and port to listen to")
 	profilelisten := flag.String("profilelisten", "", "Host to listen for go pprof connections")
 
 	flag.Parse()
 
-	if config.verify_origin == "" {
+	if config.verifyOrigin == "" {
 		fmt.Println("Must specify a value for origin veritication")
 		flag.Usage()
 		return

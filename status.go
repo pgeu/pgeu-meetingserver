@@ -8,13 +8,13 @@ import (
 )
 
 type MemberStatus struct {
-	Uid    int    `json:"uid"`
+	UID    int    `json:"uid"`
 	Name   string `json:"name"`
 	Admin  bool   `json:"admin"`
 	Remote string `json:"remote"`
 }
 type MeetingStatus struct {
-	Id                  int            `json:"id"`
+	ID                  int            `json:"id"`
 	State               string         `json:"state"`
 	Members             []MemberStatus `json:"members"`
 	DisconnectedMembers []MemberStatus `json:"disconnectedmembers"`
@@ -61,8 +61,8 @@ func StatusHandler(w http.ResponseWriter, r *http.Request) {
 	j, err := json.Marshal(status)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Could not marshal json"))
+		_, _ = w.Write([]byte("Could not marshal json"))
 		return
 	}
-	w.Write(j)
+	_, _ = w.Write(j)
 }

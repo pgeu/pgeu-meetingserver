@@ -18,7 +18,7 @@ type ErrorMsg struct {
 
 /* A new message posted by somebody */
 type msgMessage struct {
-	Id       int    `json:"id"`
+	ID       int    `json:"id"`
 	Time     string `json:"time"`
 	Date     string `json:"date"`
 	From     int64  `json:"from"`
@@ -28,9 +28,9 @@ type msgMessage struct {
 }
 
 /* Status of the meeting */
-type msgMeetingState struct {
-	Isopen     bool `json:"isopen"`
-	Isfinished bool `json:"isfinished"`
+type MsgMeetingState struct {
+	IsOpen     bool `json:"isopen"`
+	IsFinished bool `json:"isfinished"`
 }
 
 /* Status of the current poll */
@@ -45,7 +45,7 @@ type msgPollStatus struct {
 type msgUser struct {
 	Name  string `json:"name"`
 	Color string `json:"color"`
-	Id    int    `json:"id"`
+	ID    int    `json:"id"`
 }
 type msgUsers struct {
 	Users []msgUser `json:"users"`
@@ -66,7 +66,7 @@ func MakeError(message string) ErrorMsg {
 func DisconnectMessage(msg string) Msg {
 	time := time.Now()
 	data := msgMessage{
-		Id:       -1,
+		ID:       -1,
 		Time:     time.Format("15:04:05"),
 		Date:     time.Format("2006-01-02"),
 		Message:  msg,
@@ -77,12 +77,12 @@ func DisconnectMessage(msg string) Msg {
 	return MakeMessage("disconnect", data)
 }
 
-func MakeMeetingState(state int) msgMeetingState {
+func MakeMeetingState(state int) MsgMeetingState {
 	if state == MeetingStateOpen {
-		return msgMeetingState{Isopen: true, Isfinished: false}
+		return MsgMeetingState{IsOpen: true, IsFinished: false}
 	} else if state == MeetingStateFinished {
-		return msgMeetingState{Isopen: false, Isfinished: true}
+		return MsgMeetingState{IsOpen: false, IsFinished: true}
 	} else {
-		return msgMeetingState{Isopen: false, Isfinished: false}
+		return MsgMeetingState{IsOpen: false, IsFinished: false}
 	}
 }
