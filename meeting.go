@@ -66,6 +66,7 @@ func NewMeeting(meetingid int) *Meeting {
 	if err != nil {
 		panic(err)
 	}
+	db.Exec("SET application_name='pgeu meeting server'")
 
 	var state int
 	row := db.QueryRow("SELECT state FROM membership_meeting WHERE id=$1", meetingid)
