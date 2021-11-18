@@ -71,11 +71,13 @@ func NewMeeting(meetingid int) *Meeting {
 	row := db.QueryRow("SELECT state FROM membership_meeting WHERE id=$1", meetingid)
 	if err := row.Scan(&state); err != nil {
 		log.Println("Could not find/parse meeting:", err)
+		db.Close()
 		return nil
 	}
 
 	if state == MeetingStateClosed {
 		log.Println("Attempt to reopen a closed meeting: ", meetingid)
+		db.Close()
 		return nil
 	}
 
@@ -96,6 +98,9 @@ func NewMeeting(meetingid int) *Meeting {
 
 func (m *Meeting) Run() {
 	defer func() {
+		/* The meeting owns the db connection, so turn out the lights before we leave */
+		m.db.Close()
+
 		/* When we're done running, trigger the routine that removes us fromt he global array */
 		_meeting_remover_chan <- m.meetingid
 	}()
